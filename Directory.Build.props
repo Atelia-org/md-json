@@ -1,0 +1,24 @@
+<Project>
+  <!-- 统一程序集、命名空间、包名规则 -->
+  <PropertyGroup>
+    <!-- 默认程序集名、命名空间、包名均为 Atelia.{项目名} -->
+    <AssemblyName>Atelia.$(MSBuildProjectName)</AssemblyName>
+    <RootNamespace>Atelia.$(MSBuildProjectName)</RootNamespace>
+    <PackageId>Atelia.$(MSBuildProjectName)</PackageId>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!-- CLI 工具等例外项目可在各自 .csproj 内覆盖 AssemblyName/RootNamespace/PackageId -->
+
+  <!-- 可选：构建前校验命名空间前缀（防走样）-->
+  <Target Name="ValidateAteliaNamespace" BeforeTargets="CoreCompile">
+  <Error Condition="!$([System.String]::Copy('$(RootNamespace)').StartsWith('Atelia.'))"
+       Text="RootNamespace 必须以 'Atelia.' 开头，当前为 '$(RootNamespace)'" />
+  </Target>
+
+  <!-- (StyleCop removed) Placeholder for future shared analyzers or source generators -->
+</Project>

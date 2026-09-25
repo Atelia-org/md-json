@@ -52,18 +52,44 @@ public sealed class SerializationTests {
     [MemberData(nameof(Bodies))]
     public void RootBodyRetainsEveryCharacter(string body) {
         var markdown = MdJsonSerializer.Write(Value(body), [""]);
-        Assert.Contains("## \"\"", markdown);
         Assert.Equal(body, MdJsonSerializer.Read(markdown).GetString());
     }
 
+    [Fact]
+    public void CandidateStringsAreExternalizedOnlyWhenJsonEncodingEscapesThem() {
+        var value = Parse("{\"plain\":\"Hello 世界\",\"empty\":\"\",\"sourceEscape\":\"\\u0061\",\"newline\":\"line\\nbreak\",\"quote\":\"say \\\"hi\\\"\",\"backslash\":\"C:\\\\tmp\",\"unicodeEscape\":\"\\u2028\"}");
+        string[] paths = ["/plain", "/empty", "/sourceEscape", "/newline", "/quote", "/backslash", "/unicodeEscape"];
+
+        var markdown = MdJsonSerializer.Write(value, paths);
+
+        Assert.Contains("\"plain\": \"Hello 世界\"", markdown);
+        Assert.Contains("\"empty\": \"\"", markdown);
+        Assert.Contains("\"sourceEscape\": \"a\"", markdown);
+        foreach (var path in paths[..3])
+            Assert.DoesNotContain("## \"" + path + "\"", markdown);
+        foreach (var path in paths[3..])
+            Assert.Contains("## \"" + path + "\"", markdown);
+        AssertValues(value, MdJsonSerializer.Read(markdown));
+    }
+
+    [Fact]
+    public void PlainRootCandidateLeavesTheContentSectionEmpty() {
+        var markdown = MdJsonSerializer.Write(Value("plain"), [""]);
+
+        Assert.Contains("~~~json\n\"plain\"\n~~~", markdown);
+        Assert.Contains("# content\n", markdown);
+        Assert.DoesNotContain("## \"\"", markdown);
+        Assert.Equal("plain", MdJsonSerializer.Read(markdown).GetString());
+    }
+
     [Theory]
-    [InlineData("", "~~~")]
-    [InlineData("``", "~~~")]
-    [InlineData("~~~", "```")]
-    [InlineData("```", "~~~")]
-    [InlineData("~~~ ```", "~~~~")]
-    [InlineData("~~~~~~~ ```", "````")]
-    [InlineData("a~~~b```c", "~~~~")]
+    [InlineData("\n", "~~~")]
+    [InlineData("``\n", "~~~")]
+    [InlineData("~~~\n", "```")]
+    [InlineData("```\n", "~~~")]
+    [InlineData("~~~ ```\n", "~~~~")]
+    [InlineData("~~~~~~~ ```\n", "````")]
+    [InlineData("a~~~b```c\n", "~~~~")]
     public void FenceChoiceAndFramingAreObservable(string body, string fence) {
         var markdown = MdJsonSerializer.Write(Value(body), [""]);
         Assert.Contains(fence + "text\n" + body + "\n" + fence, markdown);
@@ -81,7 +107,7 @@ public sealed class SerializationTests {
 
     [Fact]
     public void DeepStructureDoesNotDependOnHeadingDepth() {
-        var json = "\"leaf\"";
+        var json = "\"leaf\\n\"";
         for (var i = 0; i < 24; i++) json = "{\"x\":" + json + "}";
         var value = Parse(json);
         AssertValues(value, MdJsonSerializer.Read(MdJsonSerializer.Write(value, [string.Concat(Enumerable.Repeat("/x", 24))])));
@@ -89,7 +115,7 @@ public sealed class SerializationTests {
 
     [Fact]
     public void DomDeeperThanDefaultJsonParserLimitRoundTrips() {
-        var json = "\"leaf\"";
+        var json = "\"leaf\\n\"";
         for (var i = 0; i < 96; i++) json = "{\"x\":" + json + "}";
         using var source = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 128 });
         var markdown = MdJsonSerializer.Write(source.RootElement, [string.Concat(Enumerable.Repeat("/x", 96))]);
@@ -98,7 +124,7 @@ public sealed class SerializationTests {
 
     [Fact]
     public void PermissivelyParsedDomWritesStrictJsonWithoutTreatingCommentsAsStrings() {
-        const string json = "{ /* malformed JSON text in comment: \" \\uD800 \\q */ \"x\": \"body\", \"n\": 1.2300e+80, }";
+        const string json = "{ /* malformed JSON text in comment: \" \\uD800 \\q */ \"x\": \"body\\n\", \"n\": 1.2300e+80, }";
         using var source = JsonDocument.Parse(json, new JsonDocumentOptions {
             CommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true
@@ -124,10 +150,12 @@ public sealed class SerializationTests {
 
     [Fact]
     public void ListOrderControlsBodiesButNotValuesOrInput() {
-        var value = Parse("{\"z\":\"same\",\"a\":[\"same\",\"other\"]}");
+        var value = Parse("{\"z\":\"same\\n\",\"plain\":\"keep\",\"a\":[\"same\\n\",\"other\\n\"]}");
         var before = value.GetRawText();
-        var first = MdJsonSerializer.Write(value, ["/z", "/a/1", "/a/0"]);
-        var second = MdJsonSerializer.Write(value, ["/a/0", "/a/1", "/z"]);
+        var first = MdJsonSerializer.Write(value, ["/z", "/plain", "/a/1", "/a/0"]);
+        var second = MdJsonSerializer.Write(value, ["/a/0", "/plain", "/a/1", "/z"]);
+        Assert.DoesNotContain("## \"/plain\"", first);
+        Assert.DoesNotContain("## \"/plain\"", second);
         Assert.True(first.IndexOf("## \"/z\"", StringComparison.Ordinal) < first.IndexOf("## \"/a/1\"", StringComparison.Ordinal));
         Assert.True(second.IndexOf("## \"/a/0\"", StringComparison.Ordinal) < second.IndexOf("## \"/a/1\"", StringComparison.Ordinal));
         Assert.True(second.IndexOf("## \"/a/1\"", StringComparison.Ordinal) < second.IndexOf("## \"/z\"", StringComparison.Ordinal));

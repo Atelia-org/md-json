@@ -1,6 +1,6 @@
 # MdJson
 
-面向 LLM prompt 的 JSON 替代表现形式：保留 JSON 骨架，把显式选中的字符串放进 Markdown 代码围栏，正文无需 JSON 转义；通过 JSON Pointer 无损回填。
+面向 LLM prompt 的 JSON 替代表现形式：保留 JSON 骨架，把显式指定且写成 JSON 时需要转义的字符串放进 Markdown 代码围栏，正文无需 JSON 转义；通过 JSON Pointer 无损回填。
 
 ## 使用
 
@@ -23,7 +23,7 @@ JsonElement restored = MdJsonSerializer.Read(markdown);
 // 可继续 restored.Deserialize<YourType>(options)。
 ```
 
-`Write(JsonElement, IReadOnlyList<string>)` 不修改输入。路径列表为空时，所有值保留在 JSON 骨架中；正文按列表顺序输出。空路径 `""` 可选中根字符串。返回的 `JsonElement` 不依赖调用方管理临时 `JsonDocument`。
+`Write(JsonElement, IReadOnlyList<string>)` 不修改输入。路径列表指定候选字符串：先验证每条路径，再用骨架的 JSON 编码器判断其值；编码后需要转义的值才外置，其余值直接留在骨架中。路径列表为空时，所有值保留在 JSON 骨架中；实际外置的正文按列表顺序输出。空路径 `""` 可选中根字符串。返回的 `JsonElement` 不依赖调用方管理临时 `JsonDocument`。
 
 `Read(string)` 通过 Markdig 识别块，并从原始源码恢复正文。非法格式、路径、占位值或不支持的 JSON 值域抛出 `FormatException`；null 参数抛出 `ArgumentNullException`。正文回填不会递归解释其中的路径或 Markdown。
 
